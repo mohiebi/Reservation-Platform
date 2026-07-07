@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: reservation_platform_test
+          POSTGRES_USER: reservation
+          POSTGRES_PASSWORD: reservation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: intl, mbstring, pcntl, pdo_pgsql, redis, zip
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: composer install --prefer-dist --no-interaction --no-progress
+      - run: npm ci
+      - run: npm run build
+
+      - name: Prepare environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan config:clear
+        env:
+          DB_HOST: 127.0.0.1
+          DB_DATABASE: reservation_platform_test
+          DB_USERNAME: reservation
+          DB_PASSWORD: reservation
+          CACHE_STORE: redis
+          QUEUE_CONNECTION: redis
+
+      - run: ./vendor/bin/pint --test
+      - run: ./vendor/bin/phpstan analyse --memory-limit=1G
+      - run: php artisan test
+        env:
+          DB_HOST: 127.0.0.1
+          DB_DATABASE: reservation_platform_test
+          DB_USERNAME: reservation
+          DB_PASSWORD: reservation
+          CACHE_STORE: redis
+          QUEUE_CONNECTION: redis
