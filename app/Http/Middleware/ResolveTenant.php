@@ -12,18 +12,18 @@ class ResolveTenant
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $identifier = $request->header('X-Tenant-ID')
-            ?? $request->route('tenant')
-            ?? $request->query('tenant');
+        $token = $request->bearerToken();
 
-        if ($identifier) {
-            $tenant = Tenant::query()
-                ->where('id', $identifier)
-                ->orWhere('slug', $identifier)
-                ->firstOrFail();
+        abort_if($token === null, 401, 'An API key is required.');
 
-            app(TenantContext::class)->set($tenant);
-        }
+        $tenant = Tenant::query()
+            ->where('api_key', hash('sha256', $token))
+            ->where('status', 'active')
+            ->first();
+
+        abort_if($tenant === null, 401, 'Invalid or inactive API key.');
+
+        app(TenantContext::class)->set($tenant);
 
         return $next($request);
     }

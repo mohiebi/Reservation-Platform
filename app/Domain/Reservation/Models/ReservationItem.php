@@ -12,7 +12,14 @@ class ReservationItem extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'reservation_id',
+        'service_id',
+        'staff_member_id',
+        'duration_minutes',
+        'price',
+        'resource_snapshot',
+    ];
 
     protected function casts(): array
     {

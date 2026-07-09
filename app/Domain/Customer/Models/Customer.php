@@ -14,7 +14,15 @@ class Customer extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'business_id',
+        'whatsapp_phone',
+        'name',
+        'locale',
+        'timezone',
+        'tags',
+        'consent',
+    ];
 
     protected function casts(): array
     {

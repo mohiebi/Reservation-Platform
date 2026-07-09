@@ -11,7 +11,15 @@ class Resource extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'business_id',
+        'branch_id',
+        'name',
+        'type',
+        'capacity',
+        'status',
+        'metadata',
+    ];
 
     protected function casts(): array
     {

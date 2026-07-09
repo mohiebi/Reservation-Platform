@@ -56,6 +56,8 @@ class WhatsAppWebhookController extends Controller
         $secret = config('whatsapp.app_secret');
 
         if (! $secret) {
+            abort_if(app()->isProduction(), 500, 'WhatsApp app secret is not configured.');
+
             return;
         }
 

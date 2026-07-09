@@ -8,6 +8,7 @@ use App\Domain\Webhooks\Models\WebhookEvent;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
+use Throwable;
 
 class ProcessWhatsAppWebhook implements ShouldQueue
 {
@@ -42,7 +43,13 @@ class ProcessWhatsAppWebhook implements ShouldQueue
         }
 
         $event->update(['tenant_id' => $phoneNumber->tenant_id, 'status' => 'processing']);
-        $conversation->handleInbound($phoneNumber, $event->payload);
-        $event->update(['status' => 'processed', 'processed_at' => Carbon::now()]);
+
+        try {
+            $conversation->handleInbound($phoneNumber, $event->payload);
+            $event->update(['status' => 'processed', 'processed_at' => Carbon::now()]);
+        } catch (Throwable $e) {
+            $event->update(['status' => 'failed', 'processed_at' => Carbon::now()]);
+            throw $e;
+        }
     }
 }

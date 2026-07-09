@@ -15,7 +15,20 @@ class Reservation extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'business_id',
+        'branch_id',
+        'customer_id',
+        'staff_member_id',
+        'status',
+        'approval_status',
+        'starts_at',
+        'ends_at',
+        'timezone',
+        'source',
+        'notes',
+        'metadata',
+    ];
 
     protected function casts(): array
     {
@@ -49,5 +62,15 @@ class Reservation extends Model
     public function items(): HasMany
     {
         return $this->hasMany(ReservationItem::class);
+    }
+
+    public function reservationResources(): HasMany
+    {
+        return $this->hasMany(ReservationResource::class);
+    }
+
+    public function reminders(): HasMany
+    {
+        return $this->hasMany(\App\Domain\Notification\Models\Reminder::class);
     }
 }

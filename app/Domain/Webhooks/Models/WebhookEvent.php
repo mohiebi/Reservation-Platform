@@ -6,7 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class WebhookEvent extends Model
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'tenant_id',
+        'provider',
+        'event_id',
+        'payload',
+        'status',
+        'processed_at',
+    ];
 
     protected function casts(): array
     {

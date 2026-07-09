@@ -24,8 +24,9 @@ class DeterministicAssistantGateway implements AssistantGateway
 
         return [
             'intent' => $intent,
-            'confidence' => $intent === 'unknown' ? 0.2 : 0.82,
+            'confidence' => $intent === 'unknown' ? 0.0 : 1.0,
             'entities' => [],
+            'source' => 'deterministic',
         ];
     }
 }

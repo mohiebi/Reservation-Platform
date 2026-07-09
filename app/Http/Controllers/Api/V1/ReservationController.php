@@ -54,7 +54,7 @@ class ReservationController extends Controller
             'branch_id' => ['nullable', 'integer'],
             'customer_id' => ['required_without:customer', 'integer'],
             'customer' => ['required_without:customer_id', 'array'],
-            'customer.whatsapp_phone' => ['required_with:customer', 'string', 'max:40'],
+            'customer.whatsapp_phone' => ['required_with:customer', 'filled', 'string', 'max:40'],
             'customer.name' => ['nullable', 'string', 'max:255'],
             'customer.locale' => ['nullable', 'string', 'max:12'],
             'customer.timezone' => ['nullable', 'timezone'],

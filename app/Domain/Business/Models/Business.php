@@ -15,7 +15,14 @@ class Business extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+        'industry_type',
+        'branding',
+        'default_timezone',
+        'status',
+        'settings',
+    ];
 
     protected function casts(): array
     {

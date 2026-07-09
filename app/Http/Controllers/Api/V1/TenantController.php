@@ -24,12 +24,15 @@ class TenantController extends Controller
             'business.industry_type' => ['nullable', 'string', 'max:80'],
         ]);
 
-        $result = DB::transaction(function () use ($validated): array {
+        $rawKey = Str::random(40);
+
+        $result = DB::transaction(function () use ($validated, $rawKey): array {
             $tenant = Tenant::query()->create([
                 'name' => $validated['name'],
                 'slug' => $validated['slug'] ?? Str::slug($validated['name']).'-'.Str::lower(Str::random(6)),
                 'timezone' => $validated['timezone'] ?? 'UTC',
                 'locale' => $validated['locale'] ?? 'en',
+                'api_key' => hash('sha256', $rawKey),
             ]);
 
             $business = Business::withoutGlobalScopes()->create([
@@ -42,6 +45,11 @@ class TenantController extends Controller
             return compact('tenant', 'business');
         });
 
-        return response()->json($result, 201);
+        return response()->json([
+            'tenant' => $result['tenant']->makeHidden(['api_key']),
+            'business' => $result['business'],
+            'api_key' => $rawKey,
+            'api_key_warning' => 'Store this key securely. It will not be shown again.',
+        ], 201);
     }
 }

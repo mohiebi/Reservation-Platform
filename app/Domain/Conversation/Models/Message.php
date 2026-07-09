@@ -10,7 +10,18 @@ class Message extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'conversation_thread_id',
+        'direction',
+        'provider_message_id',
+        'type',
+        'text',
+        'payload',
+        'status',
+        'sent_at',
+        'delivered_at',
+        'read_at',
+    ];
 
     protected function casts(): array
     {

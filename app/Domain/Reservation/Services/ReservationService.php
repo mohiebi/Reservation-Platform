@@ -8,9 +8,11 @@ use App\Domain\Notification\Services\ReminderService;
 use App\Domain\Reservation\Events\ReservationCancelled;
 use App\Domain\Reservation\Events\ReservationCreated;
 use App\Domain\Reservation\Models\Reservation;
+use App\Domain\Reservation\Models\ReservationResource;
 use App\Domain\Service\Models\Service;
 use App\Domain\Shared\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
@@ -34,11 +36,13 @@ class ReservationService
         $services = Service::query()
             ->where('business_id', $data['business_id'])
             ->whereIn('id', $serviceIds)
+            ->with('resources')
             ->get();
 
         abort_if($services->count() !== count(array_unique($serviceIds)), 422, 'One or more services are unavailable.');
 
         $durationMinutes = $services->sum(fn (Service $service): int => $service->totalDurationMinutes());
+        $capacity = (int) ($services->min('capacity') ?? 1);
         $endsAt = $startsAt->addMinutes($durationMinutes);
         $staffMemberId = $data['staff_member_id'] ?? null;
         $lockKey = implode(':', [
@@ -50,14 +54,18 @@ class ReservationService
             $startsAt->utc()->format('YmdHi'),
         ]);
 
-        return Cache::lock($lockKey, 10)->block(5, function () use ($data, $services, $startsAt, $endsAt, $staffMemberId): Reservation {
-            return DB::transaction(function () use ($data, $services, $startsAt, $endsAt, $staffMemberId): Reservation {
+        return Cache::lock($lockKey, 10)->block(5, function () use ($data, $services, $startsAt, $endsAt, $staffMemberId, $capacity): Reservation {
+            return DB::transaction(function () use ($data, $services, $startsAt, $endsAt, $staffMemberId, $capacity): Reservation {
+                $branchId = isset($data['branch_id']) ? (int) $data['branch_id'] : null;
+
                 $this->ensureSlotIsFree(
                     businessId: (int) $data['business_id'],
                     startsAt: $startsAt,
                     endsAt: $endsAt,
                     staffMemberId: $staffMemberId ? (int) $staffMemberId : null,
-                    branchId: isset($data['branch_id']) ? (int) $data['branch_id'] : null,
+                    branchId: $branchId,
+                    capacity: $capacity,
+                    services: $services,
                 );
 
                 $customer = $this->resolveCustomer($data);
@@ -88,6 +96,15 @@ class ReservationService
                         'duration_minutes' => $service->totalDurationMinutes(),
                         'price' => $service->price,
                     ]);
+
+                    foreach ($service->resources as $resource) {
+                        $reservation->reservationResources()->create([
+                            'resource_id' => $resource->id,
+                            'starts_at' => $startsAt->utc(),
+                            'ends_at' => $endsAt->utc(),
+                            'quantity' => $resource->pivot->quantity_required,
+                        ]);
+                    }
                 }
 
                 event(new ReservationCreated($reservation));
@@ -100,10 +117,18 @@ class ReservationService
 
     public function cancel(Reservation $reservation, string $reason = 'customer_requested'): Reservation
     {
+        abort_if(
+            in_array($reservation->status, ['cancelled', 'rejected', 'rescheduled'], true),
+            422,
+            'This reservation cannot be cancelled in its current state.'
+        );
+
         $reservation->update([
             'status' => 'cancelled',
             'metadata' => array_merge($reservation->metadata ?? [], ['cancellation_reason' => $reason]),
         ]);
+
+        $reservation->reminders()->where('status', 'pending')->update(['status' => 'cancelled']);
 
         event(new ReservationCancelled($reservation));
 
@@ -115,6 +140,14 @@ class ReservationService
      */
     public function reschedule(Reservation $reservation, array $data): Reservation
     {
+        abort_if(
+            in_array($reservation->status, ['cancelled', 'rejected', 'rescheduled'], true),
+            422,
+            'This reservation cannot be rescheduled in its current state.'
+        );
+
+        $reservation->reminders()->where('status', 'pending')->update(['status' => 'cancelled']);
+
         $newReservation = $this->create([
             'business_id' => $reservation->business_id,
             'branch_id' => $data['branch_id'] ?? $reservation->branch_id,
@@ -132,18 +165,73 @@ class ReservationService
         return $newReservation;
     }
 
-    private function ensureSlotIsFree(int $businessId, CarbonImmutable $startsAt, CarbonImmutable $endsAt, ?int $staffMemberId, ?int $branchId): void
-    {
-        $conflict = Reservation::query()
+    /**
+     * @param  Collection<int, Service>  $services
+     */
+    private function ensureSlotIsFree(
+        int $businessId,
+        CarbonImmutable $startsAt,
+        CarbonImmutable $endsAt,
+        ?int $staffMemberId,
+        ?int $branchId,
+        int $capacity,
+        Collection $services,
+    ): void {
+        $conflictCount = Reservation::query()
             ->where('business_id', $businessId)
             ->when($staffMemberId !== null, fn ($query) => $query->where('staff_member_id', $staffMemberId))
             ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
             ->whereNotIn('status', ['cancelled', 'rejected', 'rescheduled'])
             ->where('starts_at', '<', $endsAt->utc())
             ->where('ends_at', '>', $startsAt->utc())
-            ->exists();
+            ->count();
 
-        abort_if($conflict, 409, 'The selected slot is no longer available.');
+        abort_if($conflictCount >= $capacity, 409, 'The selected slot is no longer available.');
+
+        $this->ensureResourcesAvailable($services, $startsAt, $endsAt);
+    }
+
+    /**
+     * @param  Collection<int, Service>  $services
+     */
+    private function ensureResourcesAvailable(Collection $services, CarbonImmutable $startsAt, CarbonImmutable $endsAt): void
+    {
+        $resourceNeeds = $services
+            ->flatMap(fn (Service $s): Collection => $s->resources->map(fn ($r): array => [
+                'id' => $r->id,
+                'capacity' => (int) $r->capacity,
+                'needed' => (int) $r->pivot->quantity_required,
+                'name' => $r->name,
+            ]))
+            ->groupBy('id')
+            ->map(fn (Collection $group): array => [
+                'id' => $group->first()['id'],
+                'capacity' => $group->first()['capacity'],
+                'needed' => $group->sum('needed'),
+                'name' => $group->first()['name'],
+            ]);
+
+        if ($resourceNeeds->isEmpty()) {
+            return;
+        }
+
+        $allocated = ReservationResource::query()
+            ->whereIn('resource_id', $resourceNeeds->keys())
+            ->whereHas('reservation', fn ($q) => $q->whereNotIn('status', ['cancelled', 'rejected', 'rescheduled']))
+            ->where('starts_at', '<', $endsAt->utc())
+            ->where('ends_at', '>', $startsAt->utc())
+            ->selectRaw('resource_id, SUM(quantity) as total_allocated')
+            ->groupBy('resource_id')
+            ->pluck('total_allocated', 'resource_id');
+
+        foreach ($resourceNeeds as $need) {
+            $currentAllocation = (int) $allocated->get($need['id'], 0);
+            abort_if(
+                $currentAllocation + $need['needed'] > $need['capacity'],
+                409,
+                "Resource '{$need['name']}' is not available for the selected time slot."
+            );
+        }
     }
 
     /**

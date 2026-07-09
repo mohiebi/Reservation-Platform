@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Tenant extends Model
 {
-    protected $guarded = [];
+    protected $fillable = ['name', 'slug', 'status', 'timezone', 'locale', 'settings', 'api_key'];
+
+    protected $hidden = ['api_key'];
 
     protected function casts(): array
     {

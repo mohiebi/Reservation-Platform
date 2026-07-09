@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TenantMembership extends Model
 {
-    protected $guarded = [];
+    protected $fillable = ['tenant_id', 'user_id', 'role', 'permissions'];
 
     protected function casts(): array
     {

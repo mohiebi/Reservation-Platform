@@ -17,7 +17,16 @@ class StaffMember extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'business_id',
+        'branch_id',
+        'user_id',
+        'name',
+        'email',
+        'phone',
+        'status',
+        'profile',
+    ];
 
     protected function casts(): array
     {

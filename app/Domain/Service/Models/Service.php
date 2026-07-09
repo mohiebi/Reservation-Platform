@@ -15,7 +15,23 @@ class Service extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'business_id',
+        'service_category_id',
+        'name',
+        'description',
+        'duration_minutes',
+        'prep_minutes',
+        'cleanup_minutes',
+        'buffer_before_minutes',
+        'buffer_after_minutes',
+        'price',
+        'currency',
+        'capacity',
+        'approval_mode',
+        'booking_rules',
+        'status',
+    ];
 
     protected function casts(): array
     {
@@ -38,6 +54,13 @@ class Service extends Model
     public function staffMembers(): BelongsToMany
     {
         return $this->belongsToMany(StaffMember::class, 'staff_service')->withTimestamps();
+    }
+
+    public function resources(): BelongsToMany
+    {
+        return $this->belongsToMany(\App\Domain\Availability\Models\Resource::class, 'service_resource')
+            ->withPivot('quantity_required')
+            ->withTimestamps();
     }
 
     public function reservationItems(): HasMany

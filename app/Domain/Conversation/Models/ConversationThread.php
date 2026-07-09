@@ -13,7 +13,15 @@ class ConversationThread extends Model
 {
     use BelongsToTenant;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'business_id',
+        'customer_id',
+        'channel',
+        'status',
+        'assigned_user_id',
+        'last_message_at',
+        'context',
+    ];
 
     protected function casts(): array
     {
